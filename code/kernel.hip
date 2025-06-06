@@ -28,7 +28,28 @@
 
 #include "params.h"
 
-
+__device__ bool deviceBinarySearch(
+    const gridCellLookup* begin,
+    const gridCellLookup* end,
+    const gridCellLookup& value)
+{
+    int left = 0;
+    int right = int(end - begin) - 1;
+    while (left <= right) {
+        int mid = left + ((right - left) >> 1);
+        const gridCellLookup& midVal = begin[mid];
+        if (midVal < value) {
+            left = mid + 1;
+        }
+        else if (value < midVal) {
+            right = mid - 1;
+        }
+        else {
+            return true;  // exact match found
+        }
+    }
+    return false;
+}
 
 __device__ void evaluateCellEstimate(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE *epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, unsigned int* cnt, bool differentCell);
 
@@ -243,7 +264,7 @@ __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct
         struct gridCellLookup tmp;
         tmp.gridLinearID=calcLinearID;
         //find if the cell is non-empty
-        if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr+ (*nNonEmptyCells), gridCellLookup(tmp))){
+        if (deviceBinarySearch(gridCellLookupArr, gridCellLookupArr+ (*nNonEmptyCells), gridCellLookup(tmp))){
 
 
                 //compute the neighbors for the adjacent non-empty cell

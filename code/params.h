@@ -30,7 +30,7 @@
 #define GPUNUMDIM 2 //do not change
 #define NUMINDEXEDDIM 2 //do not change
 
-#define NTHREADS 16 //Number of physical cores on the machine
+#define NTHREADS 8 //Number of physical cores on the machine, according to GPUInfo.txt, 8 Compute Units should corr to 8 cores
 
 #define NSEARCHTHREADS 1 //Number of threads for DBSCAN part (1)
 
@@ -38,7 +38,7 @@
  
 //the number of concurrently executing partitions
 //excludes the GPU batching. Has nested parallelism.
-#define PARCHUNKS 10
+#define PARCHUNKS 5 // don't use more than CPU cores, scaled to 5 as value was originally 10 when NTHREADS was 16
  
 #define NUMGPU 1
 #define GPUSTREAMS 3 //number of concurrent gpu streams per gpu

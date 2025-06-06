@@ -226,7 +226,7 @@ int main(int argc, char *argv[])
 	
 	for (int i=0; i<NUMGPU; i++)
 	{
-	cudaSetDevice(i);	
+	hipSetDevice(i);	
 	warmUpGPU();
 	}
 	printf("\n*****************\n");

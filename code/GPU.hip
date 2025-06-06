@@ -21,8 +21,7 @@
 // SOFTWARE.
 
 //precompute direct neighbors with the GPU:
-#include <cuda_runtime.h>
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #include "structs.h"
 #include <stdio.h>
 #include "kernel.h"
@@ -38,7 +37,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
-#include <thrust/system/cuda/execution_policy.h> //for streams for thrust (added with Thrust v1.8)
+#include <thrust/system/hip/execution_policy.h> //for streams for thrust (added with Thrust v1.8)
 
 
 //for warming up GPU:
@@ -84,10 +83,10 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_que
 
 
 	//CUDA error code:
-	cudaError_t errCode;
+	hipError_t errCode;
 
 	printf("\n\n***********************************\nEstimating Batches:");
-	cout<<"\n** BATCH ESTIMATOR: Sometimes the GPU will error on a previous execution and you won't know. \nLast error start of function: "<<cudaGetLastError();
+	cout<<"\n** BATCH ESTIMATOR: Sometimes the GPU will error on a previous execution and you won't know. \nLast error start of function: "<<hipGetLastError();
 
 
 
@@ -129,10 +128,13 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_que
 	
 
 	unsigned int * dev_N_batchEst; 
-	
-
-	unsigned int * N_batchEst; 
-	N_batchEst=(unsigned int*)malloc(sizeof(unsigned int));
+	hipError_t err;
+	unsigned int *N_batchEst = nullptr;
+	err = hipHostMalloc((void**)&N_batchEst, sizeof(unsigned int), 0);
+	if (err != hipSuccess) {
+		std::cerr << "hipHostMalloc failed for N_batchEst: " 
+				<< hipGetErrorString(err) << std::endl;
+	}
 	// *N_batchEst=*DBSIZE*sampleRate;
 	// *N_batchEst=NqueryPts*sampleRate;
 	*N_batchEst=NqueryPts/offsetRate;
@@ -140,15 +142,15 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_que
 
 
 	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_N_batchEst, sizeof(unsigned int));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_N_batchEst, sizeof(unsigned int));
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_N_batchEst Got error with code " << errCode << endl; 
 	}	
 
 	//copy N to device 
 	//N IS THE NUMBER OF THREADS
-	errCode=cudaMemcpy( dev_N_batchEst, N_batchEst, sizeof(unsigned int), cudaMemcpyHostToDevice);
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_N_batchEst, N_batchEst, sizeof(unsigned int), hipMemcpyHostToDevice);
+	if(errCode != hipSuccess) {
 	cout << "\nError: N batchEST Got error with code " << errCode << endl; 
 	}
 
@@ -166,14 +168,14 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_que
 
 
 	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_cnt_batchEst, sizeof(unsigned int));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_cnt_batchEst, sizeof(unsigned int));
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_cnt_batchEst Got error with code " << errCode << endl; 
 	}	
 
 	//copy cnt to device 
-	errCode=cudaMemcpy( dev_cnt_batchEst, cnt_batchEst, sizeof(unsigned int), cudaMemcpyHostToDevice);
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_cnt_batchEst, cnt_batchEst, sizeof(unsigned int), hipMemcpyHostToDevice);
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_cnt_batchEst Got error with code " << errCode << endl; 
 	}
 
@@ -184,23 +186,26 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_que
 	/////////////////
 
 	//offset into the database when batching the results
-	unsigned int * sampleOffset; 
-	sampleOffset=(unsigned int*)malloc(sizeof(unsigned int));
+	unsigned int * sampleOffset = nullptr; 
+	err = hipHostMalloc((void**)&sampleOffset, sizeof(unsigned int), 0);
+	if (err != hipSuccess) {
+		std::cerr << "hipHostMalloc failed for sampleOffset: " 
+				<< hipGetErrorString(err) << std::endl;
+	}
 	*sampleOffset=offsetRate;
-
 
 	unsigned int * dev_sampleOffset; 
 	
 
 	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_sampleOffset, sizeof(unsigned int));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_sampleOffset, sizeof(unsigned int));
+	if(errCode != hipSuccess) {
 	cout << "\nError: sample offset Got error with code " << errCode << endl; 
 	}
 
 	//copy offset to device 
-	errCode=cudaMemcpy( dev_sampleOffset, sampleOffset, sizeof(unsigned int), cudaMemcpyHostToDevice);
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_sampleOffset, sampleOffset, sizeof(unsigned int), hipMemcpyHostToDevice);
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_sampleOffset Got error with code " << errCode << endl; 
 	}
 
@@ -215,34 +220,42 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_que
 
 	unsigned int * dev_debug2; 
 	
-	unsigned int * debug1; 
-	debug1=(unsigned int *)malloc(sizeof(unsigned int ));
+	unsigned int *debug1 = nullptr;
+	err = hipHostMalloc((void**)&debug1, sizeof(unsigned int), 0);
+	if (err != hipSuccess) {
+		std::cerr << "hipHostMalloc failed for debug1: " 
+				<< hipGetErrorString(err) << std::endl;
+	}
 	*debug1=0;
-
-	unsigned int * debug2; 
-	debug2=(unsigned int *)malloc(sizeof(unsigned int ));
+	
+	unsigned int *debug2 = nullptr;
+	err = hipHostMalloc((void**)&debug2, sizeof(unsigned int), 0);
+	if (err != hipSuccess) {
+		std::cerr << "hipHostMalloc failed for debug2: " 
+				<< hipGetErrorString(err) << std::endl;
+	}
 	*debug2=0;
 
 
 
 	//allocate on the device
-	errCode=cudaMalloc( (unsigned int **)&dev_debug1, sizeof(unsigned int ) );
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (unsigned int **)&dev_debug1, sizeof(unsigned int ) );
+	if(errCode != hipSuccess) {
 	cout << "\nError: debug1 alloc -- error with code " << errCode << endl; 
 	}		
-	errCode=cudaMalloc( (unsigned int **)&dev_debug2, sizeof(unsigned int ) );
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (unsigned int **)&dev_debug2, sizeof(unsigned int ) );
+	if(errCode != hipSuccess) {
 	cout << "\nError: debug2 alloc -- error with code " << errCode << endl; 
 	}		
 
 	//copy debug to device
-	errCode=cudaMemcpy( dev_debug1, debug1, sizeof(unsigned int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_debug1, debug1, sizeof(unsigned int), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_debug1 copy to device -- error with code " << errCode << endl; 
 	}
 
-	errCode=cudaMemcpy( dev_debug2, debug2, sizeof(unsigned int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_debug2, debug2, sizeof(unsigned int), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_debug2 copy to device -- with code " << errCode << endl; 
 	}
 
@@ -266,10 +279,10 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_que
 	kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_N_batchEst, 
 		dev_sampleOffset, dev_database, dev_queryPts, dev_epsilon, dev_grid, dev_indexLookupArr, 
 		dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells);
-		cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
+		cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<hipGetLastError();
 		// find the size of the number of results
-		errCode=cudaMemcpy( cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int), cudaMemcpyDeviceToHost);
-		if(errCode != cudaSuccess) {
+		errCode=hipMemcpy( cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int), hipMemcpyDeviceToHost);
+		if(errCode != hipSuccess) {
 		cout << "\nError: getting cnt for batch estimate from GPU Got error with code " << errCode << endl; 
 		}
 		else
@@ -355,9 +368,9 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_que
 
 
 
-	cudaFree(dev_cnt_batchEst);	
-	cudaFree(dev_N_batchEst);
-	cudaFree(dev_sampleOffset);
+	hipFree(dev_cnt_batchEst);	
+	hipFree(dev_N_batchEst);
+	hipFree(dev_sampleOffset);
 
 
 
@@ -389,16 +402,16 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	// cudaSetDevice(gpuid);	
 	// gpuid=0; //test
-	cudaSetDevice(gpuid);	
+	hipSetDevice(gpuid);	
 
 
 	double tKernelResultsStart=omp_get_wtime();
 
 	//CUDA error code:
-	cudaError_t errCode;
+	hipError_t errCode;
 
 
-	cout<<"\n** Sometimes the GPU will error on a previous execution and you won't know. \nLast error start of function: "<<cudaGetLastError();
+	cout<<"\n** Sometimes the GPU will error on a previous execution and you won't know. \nLast error start of function: "<<hipGetLastError();
 
 
 	
@@ -425,8 +438,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		
 	
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE));		
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (void**)&dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE));		
+	if(errCode != hipSuccess) {
 	cout << "\nError: database alloc -- error with code " << errCode << endl; cout.flush(); 
 	}
 
@@ -454,8 +467,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 
 		//copy database to the device
-	errCode=cudaMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE), hipMemcpyHostToDevice);	
+	if(errCode != hipSuccess) {
 	cout << "\nError: database2 Got error with code " << errCode << endl; 
 	}
 
@@ -486,8 +499,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * dev_queryPts;
 
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_queryPts, sizeof(unsigned int)*(*QUERYSIZE));		
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (void**)&dev_queryPts, sizeof(unsigned int)*(*QUERYSIZE));		
+	if(errCode != hipSuccess) {
 	cout << "\nError: queryPts alloc -- error with code " << errCode << endl; cout.flush(); 
 	}
 
@@ -497,8 +510,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 
 	//copy database to the device
-	errCode=cudaMemcpy(dev_queryPts, queryPts, sizeof(unsigned int)*(*QUERYSIZE), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy(dev_queryPts, queryPts, sizeof(unsigned int)*(*QUERYSIZE), hipMemcpyHostToDevice);	
+	if(errCode != hipSuccess) {
 	cout << "\nError: queryPts Got error with code " << errCode << endl; 
 	}
 
@@ -514,14 +527,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_sizequerypts=(unsigned int*)malloc(sizeof(unsigned int));
 
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_sizequerypts, sizeof(unsigned int));		
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (void**)&dev_sizequerypts, sizeof(unsigned int));		
+	if(errCode != hipSuccess) {
 	cout << "\nError: size query pts alloc -- error with code " << errCode << endl; cout.flush(); 
 	}
 
 	//copy the number of query points to the devid
-	errCode=cudaMemcpy(dev_sizequerypts, QUERYSIZE, sizeof(unsigned int), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy(dev_sizequerypts, QUERYSIZE, sizeof(unsigned int), hipMemcpyHostToDevice);	
+	if(errCode != hipSuccess) {
 	cout << "\nError: size query pts got error with code " << errCode << endl; 
 	}
 
@@ -536,15 +549,15 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_grid=(struct grid*)malloc(sizeof(struct grid)*(*nNonEmptyCells));
 
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_grid, sizeof(struct grid)*(*nNonEmptyCells));	
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (void**)&dev_grid, sizeof(struct grid)*(*nNonEmptyCells));	
+	if(errCode != hipSuccess) {
 	cout << "\nError: grid index -- error with code " << errCode << endl; cout.flush(); 
 	}
 
 
 	//copy grid index to the device:
-	errCode=cudaMemcpy(dev_grid, index, sizeof(struct grid)*(*nNonEmptyCells), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy(dev_grid, index, sizeof(struct grid)*(*nNonEmptyCells), hipMemcpyHostToDevice);	
+	if(errCode != hipSuccess) {
 	cout << "\nError: grid index copy to device -- error with code " << errCode << endl; 
 	}	
 
@@ -574,14 +587,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_indexLookupArr=(unsigned int*)malloc(sizeof(unsigned int)*(refPointOffset));
 
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_indexLookupArr, sizeof(unsigned int)*(refPointOffset));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (void**)&dev_indexLookupArr, sizeof(unsigned int)*(refPointOffset));
+	if(errCode != hipSuccess) {
 	cout << "\nError: lookup array allocation -- error with code " << errCode << endl; cout.flush(); 
 	}
 
 	//copy lookup array to the device:
-	errCode=cudaMemcpy(dev_indexLookupArr, indexLookupArr, sizeof(unsigned int)*(refPointOffset), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy(dev_indexLookupArr, indexLookupArr, sizeof(unsigned int)*(refPointOffset), hipMemcpyHostToDevice);	
+	if(errCode != hipSuccess) {
 	cout << "\nError: copy lookup array to device -- error with code " << errCode << endl; 
 	}	
 
@@ -606,14 +619,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_gridCellLookupArr=(struct gridCellLookup*)malloc(sizeof(struct gridCellLookup)*(*nNonEmptyCells));
 
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_gridCellLookupArr, sizeof(struct gridCellLookup)*(*nNonEmptyCells));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (void**)&dev_gridCellLookupArr, sizeof(struct gridCellLookup)*(*nNonEmptyCells));
+	if(errCode != hipSuccess) {
 	cout << "\nError: copy grid cell lookup array allocation -- error with code " << errCode << endl; cout.flush(); 
 	}
 
 	//copy lookup array to the device:
-	errCode=cudaMemcpy(dev_gridCellLookupArr, gridCellLookupArr, sizeof(struct gridCellLookup)*(*nNonEmptyCells), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy(dev_gridCellLookupArr, gridCellLookupArr, sizeof(struct gridCellLookup)*(*nNonEmptyCells), hipMemcpyHostToDevice);	
+	if(errCode != hipSuccess) {
 	cout << "\nError: copy grid cell lookup array to device -- error with code " << errCode << endl; 
 	}	
 
@@ -639,13 +652,13 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_minArr=(DTYPE*)malloc(sizeof(DTYPE)*(NUMINDEXEDDIM));
 
 	//Allocate on the device
-	errCode=cudaMalloc((void**)&dev_minArr, sizeof(DTYPE)*(NUMINDEXEDDIM));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_minArr, sizeof(DTYPE)*(NUMINDEXEDDIM));
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc minArr -- error with code " << errCode << endl; 
 	}
 
-	errCode=cudaMemcpy( dev_minArr, minArr, sizeof(DTYPE)*(NUMINDEXEDDIM), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_minArr, minArr, sizeof(DTYPE)*(NUMINDEXEDDIM), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: Copy minArr to device -- error with code " << errCode << endl; 
 	}	
 
@@ -655,13 +668,13 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_nCells=(unsigned int*)malloc(sizeof(unsigned int)*(NUMINDEXEDDIM));
 
 	//Allocate on the device
-	errCode=cudaMalloc((void**)&dev_nCells, sizeof(unsigned int)*(NUMINDEXEDDIM));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_nCells, sizeof(unsigned int)*(NUMINDEXEDDIM));
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc nCells -- error with code " << errCode << endl; 
 	}
 
-	errCode=cudaMemcpy( dev_nCells, nCells, sizeof(unsigned int)*(NUMINDEXEDDIM), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_nCells, nCells, sizeof(unsigned int)*(NUMINDEXEDDIM), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: Copy nCells to device -- error with code " << errCode << endl; 
 	}	
 
@@ -694,8 +707,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	*dev_cnt=0;
 
 	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_cnt, sizeof(unsigned int)*GPUSTREAMS);	
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_cnt, sizeof(unsigned int)*GPUSTREAMS);	
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc cnt -- error with code " << errCode << endl; 
 	}
 
@@ -713,14 +726,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	
 
 	//Allocate on the device
-	errCode=cudaMalloc((void**)&dev_epsilon, sizeof(DTYPE));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_epsilon, sizeof(DTYPE));
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc epsilon -- error with code " << errCode << endl; 
 	}
 
 	//copy to device
-	errCode=cudaMemcpy( dev_epsilon, epsilon, sizeof(DTYPE), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_epsilon, epsilon, sizeof(DTYPE), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: epsilon copy to device -- error with code " << errCode << endl; 
 	}		
 
@@ -737,14 +750,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	
 
 	//Allocate on the device
-	errCode=cudaMalloc((void**)&dev_refPointOffset, sizeof(unsigned int));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_refPointOffset, sizeof(unsigned int));
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc ref point offset -- error with code " << errCode << endl; 
 	}
 
 	//copy to device
-	errCode=cudaMemcpy( dev_refPointOffset, &refPointOffset, sizeof(unsigned int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_refPointOffset, &refPointOffset, sizeof(unsigned int), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: ref point offset copy to device -- error with code " << errCode << endl; 
 	}		
 
@@ -762,14 +775,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 
 	//Allocate on the device
-	errCode=cudaMalloc((void**)&dev_nNonEmptyCells, sizeof(unsigned int));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_nNonEmptyCells, sizeof(unsigned int));
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc nNonEmptyCells -- error with code " << errCode << endl; 
 	}
 
 	//copy to device
-	errCode=cudaMemcpy( dev_nNonEmptyCells, nNonEmptyCells, sizeof(unsigned int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_nNonEmptyCells, nNonEmptyCells, sizeof(unsigned int), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: nNonEmptyCells copy to device -- error with code " << errCode << endl; 
 	}		
 
@@ -793,8 +806,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_N=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
 
 	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_N, sizeof(unsigned int)*GPUSTREAMS);
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_N, sizeof(unsigned int)*GPUSTREAMS);
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc dev_N -- error with code " << errCode << endl; 
 	}	
 
@@ -814,8 +827,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_offset=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
 
 	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_offset, sizeof(unsigned int)*GPUSTREAMS);
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_offset, sizeof(unsigned int)*GPUSTREAMS);
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc offset -- error with code " << errCode << endl; 
 	}
 
@@ -828,8 +841,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// dev_batchNumber=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
 
 	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_batchNumber, sizeof(unsigned int)*GPUSTREAMS);
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_batchNumber, sizeof(unsigned int)*GPUSTREAMS);
+	if(errCode != hipSuccess) {
 	cout << "\nError: Alloc batch number -- error with code " << errCode << endl; 
 	}
 
@@ -926,23 +939,23 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 
 	//allocate on the device
-	errCode=cudaMalloc( (unsigned int **)&dev_debug1, sizeof(unsigned int ) );
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (unsigned int **)&dev_debug1, sizeof(unsigned int ) );
+	if(errCode != hipSuccess) {
 	cout << "\nError: debug1 alloc -- error with code " << errCode << endl; 
 	}		
-	errCode=cudaMalloc( (unsigned int **)&dev_debug2, sizeof(unsigned int ) );
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (unsigned int **)&dev_debug2, sizeof(unsigned int ) );
+	if(errCode != hipSuccess) {
 	cout << "\nError: debug2 alloc -- error with code " << errCode << endl; 
 	}		
 
 	//copy debug to device
-	errCode=cudaMemcpy( dev_debug1, debug1, sizeof(unsigned int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_debug1, debug1, sizeof(unsigned int), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_debug1 copy to device -- error with code " << errCode << endl; 
 	}
 
-	errCode=cudaMemcpy( dev_debug2, debug2, sizeof(unsigned int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_debug2, debug2, sizeof(unsigned int), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_debug2 copy to device -- with code " << errCode << endl; 
 	}
 
@@ -995,14 +1008,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	for (int i=0; i<GPUSTREAMS; i++)
 	{
-		errCode=cudaMalloc((void **)&dev_pointIDKey[i], sizeof(int)*GPUBufferSize);
-		if(errCode != cudaSuccess) {
-		cout << "CUDA: Got error with code " << errCode << endl; //2 means not enough memory
+		errCode= hipMalloc((void **)&dev_pointIDKey[i], sizeof(int)*GPUBufferSize);
+		if(errCode != hipSuccess) {
+		cout << "HIP: Got error with code " << errCode << endl; //2 means not enough memory
 		}
 
-		errCode=cudaMalloc((void **)&dev_pointInDistValue[i], sizeof(int)*GPUBufferSize);
-		if(errCode != cudaSuccess) {
-		cout << "CUDA: Got error with code " << errCode << endl; //2 means not enough memory
+		errCode= hipMalloc((void **)&dev_pointInDistValue[i], sizeof(int)*GPUBufferSize);
+		if(errCode != hipSuccess) {
+		cout << "HIP: Got error with code " << errCode << endl; //2 means not enough memory
 		}
 
 
@@ -1080,10 +1093,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//set device	
 	// cudaSetDevice(gpuid);
 
-	cudaStream_t stream[GPUSTREAMS];
+	hipStream_t stream[GPUSTREAMS];
 	
 	for (int i=0; i<GPUSTREAMS; i++){
-	cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking);
+	hipStreamCreateWithFlags(&stream[i], hipStreamNonBlocking);
 	}	
 
 	/////////////////////////////////
@@ -1102,7 +1115,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//have that.  The batchSize is the lower value (+1 is added to the first ones)
 
 	CTYPE* dev_workCounts;
-	cudaMalloc((void **)&dev_workCounts, sizeof(CTYPE)*2);
+	hipMalloc((void **)&dev_workCounts, sizeof(CTYPE)*2);
 
 	unsigned int batchSize=(*QUERYSIZE)/numBatches;
 	unsigned int batchesThatHaveOneMore=(*QUERYSIZE)-(batchSize*numBatches); //batch number 0- < this value have one more
@@ -1120,7 +1133,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		for (int i=0; i<numBatches; i++)
 		{	
 			
-			cudaSetDevice(gpuid);	
+			hipSetDevice(gpuid);	
 			int tid=omp_get_thread_num();
 			
 
@@ -1149,29 +1162,29 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			
 			//copy N to device 
 			//N IS THE NUMBER OF THREADS
-			errCode=cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
+			errCode=hipMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), hipMemcpyHostToDevice, stream[tid] );
+			if(errCode != hipSuccess) {
 			cout << "\nError: N Got error with code " << errCode << endl; 
 			}
 
 			//the batched result set size (reset to 0):
 			cnt[tid]=0;
-			errCode=cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
+			errCode=hipMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), hipMemcpyHostToDevice, stream[tid] );
+			if(errCode != hipSuccess) {
 			cout << "\nError: dev_cnt memcpy Got error with code " << errCode << endl; 
 			}
 
 			//the offset for batching, which keeps track of where to start processing at each batch
 			batchOffset[tid]=numBatches; //for the strided
-			errCode=cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
+			errCode=hipMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), hipMemcpyHostToDevice, stream[tid] );
+			if(errCode != hipSuccess) {
 			cout << "\nError: dev_offset memcpy Got error with code " << errCode << endl; 
 			}
 
 			//the batch number for batching with strided
 			batchNumber[tid]=i;
-			errCode=cudaMemcpyAsync( &dev_batchNumber[tid], &batchNumber[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
+			errCode=hipMemcpyAsync( &dev_batchNumber[tid], &batchNumber[tid], sizeof(unsigned int), hipMemcpyHostToDevice, stream[tid] );
+			if(errCode != hipSuccess) {
 			cout << "\nError: dev_batchNumber memcpy Got error with code " << errCode << endl; 
 			}
 
@@ -1187,17 +1200,17 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			// errCode=cudaDeviceSynchronize();
 			// cout <<"\n\nError from device synchronize: "<<errCode;
 
-			cout <<"\n\nKERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
-			if ( cudaSuccess != cudaGetLastError() ){
-		    	cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
+			cout <<"\n\nKERNEL LAUNCH RETURN: "<<hipGetLastError()<<endl<<endl;
+			if ( hipSuccess != hipGetLastError() ){
+		    	cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<hipSuccess<<endl<<endl;
 		    }
 
 		    
 
 		   
 			// find the size of the number of results
-			errCode=cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
-			if(errCode != cudaSuccess) {
+			errCode=hipMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), hipMemcpyDeviceToHost, stream[tid] );
+			if(errCode != hipSuccess) {
 			cout << "\nError: getting cnt from GPU Got error with code " << errCode << endl; 
 			}
 			else{
@@ -1231,7 +1244,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			
 			
 			try{
-			thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
+			thrust::sort_by_key(thrust::hip::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
 
 
 			}
@@ -1244,11 +1257,11 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 
 	  		//thrust with streams into individual buffers for each batch
-			cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[gpuid][tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-			cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[gpuid][tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
+			hipMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[gpuid][tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid]*sizeof(int), hipMemcpyDeviceToHost, stream[tid]);
+			hipMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[gpuid][tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid]*sizeof(int), hipMemcpyDeviceToHost, stream[tid]);	
 
 			//need to make sure the data is copied before constructing portion of the neighbor table
-			cudaStreamSynchronize(stream[tid]);
+			hipStreamSynchronize(stream[tid]);
 			
 			
 
@@ -1340,8 +1353,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	double tFreeStart=omp_get_wtime();
 
 	for (int i=0; i<GPUSTREAMS; i++){
-		errCode=cudaStreamDestroy(stream[i]);
-		if(errCode != cudaSuccess) {
+		errCode=hipStreamDestroy(stream[i]);
+		if(errCode != hipSuccess) {
 		cout << "\nError: destroying stream" << errCode << endl; 
 		}
 	}
@@ -1362,28 +1375,28 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 
 	//free the data on the device
-	errCode=cudaFree(dev_database);
-	errCode=cudaFree(dev_debug1);
-	errCode=cudaFree(dev_debug2);
-	errCode=cudaFree(dev_epsilon);
-	errCode=cudaFree(dev_grid);
-	errCode=cudaFree(dev_gridCellLookupArr);
-	errCode=cudaFree(dev_indexLookupArr);
-	errCode=cudaFree(dev_minArr);
-	errCode=cudaFree(dev_nCells);
-	errCode=cudaFree(dev_queryPts);
-	errCode=cudaFree(dev_nNonEmptyCells);
-	errCode=cudaFree(dev_N);
-	errCode=cudaFree(dev_cnt);
-	errCode=cudaFree(dev_offset);
-	errCode=cudaFree(dev_batchNumber);
+	errCode=hipFree(dev_database);
+	errCode=hipFree(dev_debug1);
+	errCode=hipFree(dev_debug2);
+	errCode=hipFree(dev_epsilon);
+	errCode=hipFree(dev_grid);
+	errCode=hipFree(dev_gridCellLookupArr);
+	errCode=hipFree(dev_indexLookupArr);
+	errCode=hipFree(dev_minArr);
+	errCode=hipFree(dev_nCells);
+	errCode=hipFree(dev_queryPts);
+	errCode=hipFree(dev_nNonEmptyCells);
+	errCode=hipFree(dev_N);
+	errCode=hipFree(dev_cnt);
+	errCode=hipFree(dev_offset);
+	errCode=hipFree(dev_batchNumber);
 
 	
 	//free data related to the individual streams for each batch
 	for (int i=0; i<GPUSTREAMS; i++){
 		//free the data on the device
-		errCode=cudaFree(dev_pointIDKey[i]);
-		errCode=cudaFree(dev_pointInDistValue[i]);
+		errCode=hipFree(dev_pointIDKey[i]);
+		errCode=hipFree(dev_pointInDistValue[i]);
 		//free on the host
 		//moved to another section, as we allocate in main
 		// cudaFreeHost(pointIDKey[i]);
@@ -1394,7 +1407,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	printf("\nTime freeing memory: %f", tFreeEnd - tFreeStart);
 	
-	cout<<"\n** last error at end of fn batches (could be from freeing memory): "<<cudaGetLastError();
+	cout<<"\n** last error at end of fn batches (could be from freeing memory): "<<hipGetLastError();
 
 }
 
@@ -1439,8 +1452,8 @@ void allocPinnedmemory(int * pointIDKey[NUMGPU][GPUSTREAMS], int * pointInDistVa
 	{	
 		for (int j=0; j<GPUSTREAMS; j++)
 		{
-		cudaMallocHost((void **) &pointIDKey[i][j], sizeof(int)*GPUBUFFERSIZE);
-		cudaMallocHost((void **) &pointInDistValue[i][j], sizeof(int)*GPUBUFFERSIZE);
+		hipHostMalloc((void **) &pointIDKey[i][j], sizeof(int)*GPUBUFFERSIZE);
+		hipHostMalloc((void **) &pointInDistValue[i][j], sizeof(int)*GPUBUFFERSIZE);
 		}
 	}	
 	double tendpinnedresults=omp_get_wtime();
@@ -1461,8 +1474,8 @@ void deAllocPinnedMemory(int * pointIDKey[NUMGPU][GPUSTREAMS], int * pointInDist
 	{	
 		for (int j=0; j<GPUSTREAMS; j++)
 		{
-			cudaFreeHost(pointIDKey[i][j]);
-			cudaFreeHost(pointInDistValue[i][j]);
+			hipHostFree(pointIDKey[i][j]);
+			hipHostFree(pointInDistValue[i][j]);
 		}
 	}	
 
@@ -1600,7 +1613,7 @@ void constructNeighborTableKeyValue(int * pointIDKey, int * pointInDistValue, st
 void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPoints, DTYPE* epsilon, struct table * neighborTable, unsigned long long int * totalNeighbors)
 {
 	//CUDA error code:
-	cudaError_t errCode;
+	hipError_t errCode;
 
 
 	///////////////////////////////////
@@ -1623,8 +1636,8 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	
 
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*GPUNUMDIM*(*N));		
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (void**)&dev_database, sizeof(DTYPE)*GPUNUMDIM*(*N));		
+	if(errCode != hipSuccess) {
 	cout << "\nError: database Got error with code " << errCode << endl; cout.flush(); 
 	}
 
@@ -1656,8 +1669,8 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 
 	
 	//copy database to the device:
-	errCode=cudaMemcpy(dev_database, database, sizeof(DTYPE)*(*N)*GPUNUMDIM, cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy(dev_database, database, sizeof(DTYPE)*(*N)*GPUNUMDIM, hipMemcpyHostToDevice);	
+	if(errCode != hipSuccess) {
 	cout << "\nError: database Got error with code " << errCode << endl; 
 	}	
 
@@ -1689,14 +1702,14 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	
 
 
-	errCode=cudaMalloc((void **)&dev_pointIDKey, sizeof(int)*BUFFERELEM);
-	if(errCode != cudaSuccess) {
-	cout << "CUDA: Got error with code " << errCode << endl; //2 means not enough memory
+	errCode=hipMalloc((void **)&dev_pointIDKey, sizeof(int)*BUFFERELEM);
+	if(errCode != hipSuccess) {
+	cout << "HIP: Got error with code " << errCode << endl; //2 means not enough memory
 	}
 
-	errCode=cudaMalloc((void **)&dev_pointInDistValue, sizeof(int)*BUFFERELEM);
-	if(errCode != cudaSuccess) {
-	cout << "CUDA: Got error with code " << errCode << endl; //2 means not enough memory
+	errCode=hipMalloc((void **)&dev_pointInDistValue, sizeof(int)*BUFFERELEM);
+	if(errCode != hipSuccess) {
+	cout << "HIP: Got error with code " << errCode << endl; //2 means not enough memory
 	}
 
 
@@ -1758,14 +1771,14 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	*dev_cnt=0;
 
 	//allocate on the device
-	errCode=cudaMalloc((unsigned long long int**)&dev_cnt, sizeof(unsigned long long int));	
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((unsigned long long int**)&dev_cnt, sizeof(unsigned long long int));	
+	if(errCode != hipSuccess) {
 	cout << "\nError: cnt Got error with code " << errCode << endl; 
 	}
 
 
-	errCode=cudaMemcpy( dev_cnt, cnt, sizeof(unsigned long long int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_cnt, cnt, sizeof(unsigned long long int), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: dev_cnt memcpy Got error with code " << errCode << endl; 
 	}
 
@@ -1779,8 +1792,8 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	dev_epsilon=(DTYPE*)malloc(sizeof( DTYPE));
 
 	//Allocate on the device
-	errCode=cudaMalloc((void**)&dev_epsilon, sizeof(DTYPE));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_epsilon, sizeof(DTYPE));
+	if(errCode != hipSuccess) {
 	cout << "\nError: epsilon Got error with code " << errCode << endl; 
 	}
 
@@ -1791,8 +1804,8 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	dev_N=(unsigned int*)malloc(sizeof( unsigned int ));
 
 	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_N, sizeof(unsigned int));
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc((void**)&dev_N, sizeof(unsigned int));
+	if(errCode != hipSuccess) {
 	cout << "\nError: N Got error with code " << errCode << endl; 
 	}	
 
@@ -1810,26 +1823,26 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 
 
 	//allocate on the device
-	errCode=cudaMalloc( (unsigned int **)&dev_debug1, sizeof(unsigned int ) );
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (unsigned int **)&dev_debug1, sizeof(unsigned int ) );
+	if(errCode != hipSuccess) {
 	cout << "\nError: debug1 Got error with code " << errCode << endl; 
 	}		
-	errCode=cudaMalloc( (unsigned int **)&dev_debug2, sizeof(unsigned int ) );
-	if(errCode != cudaSuccess) {
+	errCode=hipMalloc( (unsigned int **)&dev_debug2, sizeof(unsigned int ) );
+	if(errCode != hipSuccess) {
 	cout << "\nError: debug2 Got error with code " << errCode << endl; 
 	}		
 
 
 	//copy N, epsilon to the device
 	//epsilon
-	errCode=cudaMemcpy( dev_epsilon, epsilon, sizeof(DTYPE), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_epsilon, epsilon, sizeof(DTYPE), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: epsilon Got error with code " << errCode << endl; 
 	}		
 
 	//N (DATASET SIZE)
-	errCode=cudaMemcpy( dev_N, N, sizeof(unsigned int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( dev_N, N, sizeof(unsigned int), hipMemcpyHostToDevice );
+	if(errCode != hipSuccess) {
 	cout << "\nError: N Got error with code " << errCode << endl; 
 	}		
 
@@ -1858,12 +1871,12 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	
 	double tkernel_start=omp_get_wtime();
 	kernelBruteForce<<< TOTALBLOCKS, BLOCKSIZE >>>(dev_N, dev_debug1, dev_debug2, dev_epsilon, dev_cnt, dev_database, dev_pointIDKey, dev_pointInDistValue);
-	if ( cudaSuccess != cudaGetLastError() ){
+	if ( hipSuccess != hipGetLastError() ){
     	printf( "Error in kernel launch!\n" );
     }
 
 
-    cudaDeviceSynchronize();
+    hipDeviceSynchronize();
     double tkernel_end=omp_get_wtime();
     printf("\nTime for kernel only: %f", tkernel_end - tkernel_start);
     ///////////////////////////////////
@@ -1877,8 +1890,8 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	///////////////////////////////////
 
 	//first find the size of the number of results
-	errCode=cudaMemcpy( cnt, dev_cnt, sizeof(unsigned int), cudaMemcpyDeviceToHost );
-	if(errCode != cudaSuccess) {
+	errCode=hipMemcpy( cnt, dev_cnt, sizeof(unsigned int), hipMemcpyDeviceToHost );
+	if(errCode != hipSuccess) {
 	cout << "\nError: getting cnt from GPU Got error with code " << errCode << endl; 
 	}
 	else
@@ -1899,9 +1912,9 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	debug2=(unsigned int*)malloc(sizeof(unsigned int));
 	*debug2=0;
 
-	errCode=cudaMemcpy(debug1, dev_debug1, sizeof(unsigned int), cudaMemcpyDeviceToHost );
+	errCode=hipMemcpy(debug1, dev_debug1, sizeof(unsigned int), hipMemcpyDeviceToHost );
 	
-	if(errCode != cudaSuccess) {
+	if(errCode != hipSuccess) {
 	cout << "\nError: getting debug1 from GPU Got error with code " << errCode << endl; 
 	}
 	else
@@ -1909,9 +1922,9 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 		printf("\nDebug1 value: %u",*debug1);
 	}
 
-	errCode=cudaMemcpy(debug2, dev_debug2, sizeof(unsigned int), cudaMemcpyDeviceToHost );
+	errCode=hipMemcpy(debug2, dev_debug2, sizeof(unsigned int), hipMemcpyDeviceToHost );
 	
-	if(errCode != cudaSuccess) {
+	if(errCode != hipSuccess) {
 	cout << "\nError: getting debug1 from GPU Got error with code " << errCode << endl; 
 	}
 	else
@@ -1929,11 +1942,11 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 	//FREE MEMORY FROM THE GPU
 	///////////////////////////////////
     //free:
-	cudaFree(dev_database);
-	cudaFree(dev_debug1);
-	cudaFree(dev_debug2);
-	cudaFree(dev_cnt);
-	cudaFree(dev_epsilon);
+	hipFree(dev_database);
+	hipFree(dev_debug1);
+	hipFree(dev_debug2);
+	hipFree(dev_cnt);
+	hipFree(dev_epsilon);
 	////////////////////////////////////
 
 

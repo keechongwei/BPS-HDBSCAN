@@ -20,38 +20,34 @@
 
 #This give a range of noise point percentages: 36%-0.09337% corresponding to epsilon=0.01 and 0.06, respectively.
 
-
-
-
 SOURCES = import_dataset.cpp main.cu GPU.cu kernel.cu cluster.cpp DBScan.cpp tree_functions.cpp globalsDBSCAN.cpp par_sort.cpp
 OBJECTS = import_dataset.o cluster.o DBScan.o tree_functions.o par_sort.o globalsDBSCAN.o
 CUDAOBJECTS = GPU.o kernel.o main.o
-CC = nvcc
+CC = hipcc
 EXECUTABLE = main
 
 
-FLAGS = -ccbin g++ -O3 -std=c++11 -Xcompiler -fopenmp -arch=compute_60 -code=sm_60 -lcuda -lineinfo 
+# FLAGS = -ccbin g++ -O3 -std=c++11 -Xcompiler -fopenmp -arch=compute_60 -code=sm_60 -lcuda -lineinfo 
+FLAGS = -O3 -std=c++17 -fopenmp --amdgpu-target=gfx902
+
 CFLAGS = -c 
 
 
+.PHONY: all
 
 all: $(EXECUTABLE)
-
-
 
 .cpp.o:
 	$(CC) $(CFLAGS) $(FLAGS) $<
 
-
-
 main.o: main.cu params.h
-	$(CC) $(CFLAGS) $(FLAGS) main.cu 
+	$(CC) $(CFLAGS) $(FLAGS) main.hip 
 
-kernel.o: kernel.cu params.h
-	$(CC) $(CFLAGS) $(FLAGS) kernel.cu 		
+kernel.o: kernel.hip params.h
+	$(CC) $(CFLAGS) $(FLAGS) kernel.hip 		
 
-GPU.o: GPU.cu params.h
-	$(CC) $(CFLAGS) $(FLAGS) GPU.cu 	
+GPU.o: GPU.hip params.h
+	$(CC) $(CFLAGS) $(FLAGS) GPU.hip 	
 
 
 cluster.o: cluster.cpp params.h
